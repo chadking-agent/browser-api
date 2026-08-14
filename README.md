@@ -266,4 +266,4 @@ it automatically. No router changes required.
 
 ## License
 
-[MIT](LICENSE) — Copyright (c) 2026 browser-api contributors.
+[MIT](LICENSE) — free to use, modify, and distribute.
