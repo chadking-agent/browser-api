@@ -1,0 +1,5 @@
+# Dev/test only. Install with: pip install -e ".[dev]"
+ruff>=0.9,<1
+pytest>=8,<10
+build>=1.2
+twine>=5

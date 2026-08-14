@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.eggs/
+
+# Virtualenvs
+.venv/
+venv/
+
+# Runtime state — NEVER commit browser profiles (they hold live session cookies)
+profiles/
+*chrome-profile*/
+.cache/
+logs/
+*.log
+
+# Runtime lock/state files
+.bridge.lock
+.bridge.turns
+*.pid
+
+# Env & secrets
+.env
+.env.local
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# OS
+.DS_Store
