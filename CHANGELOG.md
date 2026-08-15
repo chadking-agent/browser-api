@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.3.1] - 2026-08-14
+
+### Added
+- `_reset_stream_state()` in the provider base: clears per-request CDP stream
+  state so a stale `finished`/`error` event from a previous request cannot
+  break or mis-report the current stream.
+
+### Fixed
+- `_env_int()` now bound-checks parsed values (ports 1-65535, body caps
+  1 KiB-1 GiB) and falls back to the default on out-of-range input — a
+  negative or zero `BROWSER_API_PORT` / `BROWSER_API_MAX_BODY_BYTES` no
+  longer passes through raw.
+- README version example corrected to 0.3.0.
+
+### Notes
+- ddd + secharden passed (Gemini adversarial review: stream-state race
+  mitigated by the existing requestId guard; env bounds hardened).
+
 ## [0.3.0] - 2026-08-13
 
 ### Added

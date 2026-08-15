@@ -16,7 +16,6 @@ inactivity auto-refresh/restart, and graceful close.
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
 import time
@@ -72,6 +71,18 @@ class BrowserProvider:
 
     def _mark_activity(self):
         self._last_activity = time.monotonic()
+
+    def _reset_stream_state(self):
+        """Clear per-request CDP stream state.
+
+        A stale event from a previous request (e.g. a leftover finished
+        ``_stream_done`` or an old ``_stream_error``) must not be mistaken
+        for this request's stream, otherwise the caller may break early or
+        report a bogus error before the new response starts arriving.
+        """
+        self._stream_request_id = None
+        self._stream_done.clear()
+        self._stream_error = None
 
     def _is_dead_page_error(self, e: Exception) -> bool:
         """True when the browser/page/context is gone and the session must be rebuilt."""
@@ -292,18 +303,19 @@ class BrowserProvider:
         return ResponseStatus.TIMEOUT, "No response captured via DOM"
 
     async def _find_and_fill_input(self, text: str):
-        element = None
+        matched_selector: str | None = None
         for sel in self.input_selectors:
             try:
                 element = await self._page.wait_for_selector(
                     sel, state="visible", timeout=3000
                 )
                 if element:
+                    matched_selector = sel
                     break
             except Exception:
                 continue
 
-        if not element:
+        if matched_selector is None:
             raise RuntimeError("Could not find input element on the page")
 
         for attempt in range(3):
@@ -315,7 +327,7 @@ class BrowserProvider:
                     raise
                 await asyncio.sleep(0.5)
                 element = await self._page.wait_for_selector(
-                    self.input_selectors[0],
+                    matched_selector,
                     state="visible", timeout=3000
                 )
                 if not element:
@@ -325,7 +337,7 @@ class BrowserProvider:
         # Re-query before fill: the web app re-renders the DOM after click, which detaches
         # the old element handle ("Element is not attached to the DOM").
         element = await self._page.wait_for_selector(
-            self.input_selectors[0],
+            matched_selector,
             state="visible", timeout=3000
         )
         if not element:
@@ -353,6 +365,7 @@ class BrowserProvider:
     async def send_prompt(self, prompt: str, new_chat: bool = False) -> dict:
         async with self._request_lock:
             try:
+                self._reset_stream_state()
                 await self._check_inactivity()
                 self._mark_activity()
                 if new_chat:
@@ -391,6 +404,7 @@ class BrowserProvider:
 
     async def _send_prompt_streaming_locked(self, prompt: str, new_chat: bool = False) -> AsyncGenerator[dict, None]:
         try:
+            self._reset_stream_state()
             await self._check_inactivity()
             self._mark_activity()
             if new_chat:

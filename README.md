@@ -94,7 +94,7 @@ pip install browser-api          # from PyPI
 Verify: `browser-api-server --help` exits 0, and:
 
 ```bash
-python -c "import browser_api; print(browser_api.__version__)"   # 0.2.0
+python -c "import browser_api; print(browser_api.__version__)"   # 0.3.0
 ```
 
 ## First-run login

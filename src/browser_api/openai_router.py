@@ -31,11 +31,29 @@ from browser_api.providers.base import ResponseStatus
 
 logger = logging.getLogger("openai_router")
 
+
+def _env_int(name: str, default: int, lo: int = 1, hi: int = 65535) -> int:
+    """Parse an integer env var, falling back to ``default`` on missing/invalid
+    input or a value outside [lo, hi]. Ports and byte caps must be sane."""
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        v = int(raw)
+    except ValueError:
+        logger.warning("Ignoring invalid integer for %s: %r", name, raw)
+        return default
+    if not (lo <= v <= hi):
+        logger.warning("Ignoring out-of-range integer for %s: %r", name, raw)
+        return default
+    return v
+
+
 # Loopback-only by default. Override with BROWSER_API_HOST if you
 # deliberately want LAN access (see README warning: the server has no
 # authentication unless BROWSER_API_API_KEY is set).
 HOST = os.environ.get("BROWSER_API_HOST", "127.0.0.1")
-PORT = int(os.environ.get("BROWSER_API_PORT", "54706"))
+PORT = _env_int("BROWSER_API_PORT", 54706)
 
 # Optional bearer token. If set, every route requires
 # `Authorization: Bearer <key>` (constant-time compare). Unset = no auth,
@@ -192,6 +210,10 @@ async def lifespan(app: FastAPI):
 
     logger.info("Shutting down")
     watchdog.cancel()
+    try:
+        await watchdog
+    except (asyncio.CancelledError, Exception):
+        pass
     for st in _state.values():
         if st.start_task and not st.start_task.done():
             st.start_task.cancel()
@@ -204,12 +226,18 @@ async def lifespan(app: FastAPI):
                 await st.bridge.close()
             except Exception:
                 pass
+    try:
+        logging.getLogger().removeHandler(fh)
+        fh.close()
+    except Exception:
+        pass
 
 
 app = FastAPI(title="browser-api Router", version=__version__, lifespan=lifespan,
               docs_url=None, redoc_url=None, openapi_url=None)
 
-MAX_BODY_BYTES = int(os.environ.get("BROWSER_API_MAX_BODY_BYTES", str(8 * 1024 * 1024)))
+MAX_BODY_BYTES = _env_int("BROWSER_API_MAX_BODY_BYTES", 8 * 1024 * 1024,
+                           lo=1024, hi=1 << 30)
 
 
 def _openai_error(status: int, message: str) -> JSONResponse:
@@ -254,8 +282,12 @@ async def _body_size_limit(request: Request, call_next):
     """Reject oversized request bodies (simple DoS guard)."""
     if request.method in ("POST", "PUT", "PATCH"):
         cl = request.headers.get("content-length")
-        if cl and cl.isdigit() and int(cl) > MAX_BODY_BYTES:
-            return _openai_error(413, "Request body too large")
+        if cl:
+            try:
+                if int(cl) > MAX_BODY_BYTES:
+                    return _openai_error(413, "Request body too large")
+            except ValueError:
+                pass
     return await call_next(request)
 
 
@@ -273,7 +305,7 @@ def _require_auth(request: Request):
 
 class Message(BaseModel):
     role: str
-    content: str = Field(..., max_length=100_000)
+    content: str | None = Field(None, max_length=100_000)
 
 
 class ChatRequest(BaseModel):
@@ -474,7 +506,7 @@ async def _chat_completions_for(state: ProviderState, req: ChatRequest):
     last_msg = ""
     for m in reversed(req.messages):
         if m.role == "user":
-            last_msg = m.content
+            last_msg = m.content or ""
             break
 
     if not last_msg:
